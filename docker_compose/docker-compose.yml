@@ -1,17 +1,15 @@
 version: '3.7'
 services:
   api:
-    image: "hashicorpdemoapp/product-api:v0.0.17"
+    image: "hashicorpdemoapp/product-api:v0.0.18"
     ports:
       - "19090:9090"
-    volumes:
-      - ${PWD}/conf.json:/config/config.json
     environment:
-      CONFIG_FILE: '/config/config.json'
+      DB_CONNECTION: 'host=db port=5432 user=postgres password=password dbname=products sslmode=disable'
     depends_on:
       - db
   db:
-    image: "hashicorpdemoapp/product-api-db:v0.0.17"
+    image: "hashicorpdemoapp/product-api-db:v0.0.18"
     ports:
       - "15432:5432"
     environment:

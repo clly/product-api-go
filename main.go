@@ -27,6 +27,9 @@ var conf *Config
 var logger hclog.Logger
 
 var configFile = env.String("CONFIG_FILE", false, "./conf.json", "Path to JSON encoded config file")
+var databaseConnection = env.String("DB_CONNECTION", false, "", "Database connection string")
+var bindAddress = env.String("BIND_ADDRESS", false, ":9090", "Bind address")
+var metricsAddress = env.String("METRICS_ADDRESS", false, ":9103", "Metrics address")
 
 const jwtSecret = "test"
 
@@ -46,15 +49,21 @@ func main() {
 	}
 	defer closer.Close()
 
-	conf = &Config{}
+	conf = &Config{
+		DBConnection:   *databaseConnection,
+		BindAddress:    *bindAddress,
+		MetricsAddress: *metricsAddress,
+	}
 
 	// load the config
-	c, err := config.New(*configFile, conf, configUpdated)
-	if err != nil {
-		logger.Error("Unable to load config file", "error", err)
-		os.Exit(1)
+	if *databaseConnection == "" {
+		c, err := config.New(*configFile, conf, configUpdated)
+		if err != nil {
+			logger.Error("Unable to load config file", "error", err)
+			os.Exit(1)
+		}
+		defer c.Close()
 	}
-	defer c.Close()
 
 	// configure the telemetry
 	t := telemetry.New(conf.MetricsAddress)

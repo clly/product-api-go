@@ -5,8 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/hashicorp-demoapp/go-hckit"
 	"github.com/nicholasjackson/env"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
+	"go.opentelemetry.io/otel"
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp-demoapp/product-api-go/config"
@@ -33,18 +34,18 @@ const jwtSecret = "test"
 func main() {
 	logger = hclog.Default()
 
-	err := env.Parse()
+	ctx, closer, err := telemetry.InitTracer()
+	if err != nil {
+		logger.Error("error initilizing tracer", "error", err)
+	}
+	defer closer()
+	ctx, span := otel.GetTracerProvider().Tracer("product-api-go").Start(ctx, "init")
+
+	err = env.Parse()
 	if err != nil {
 		logger.Error("Error parsing flags", "error", err)
 		os.Exit(1)
 	}
-
-	closer, err := hckit.InitGlobalTracer("product-api")
-	if err != nil {
-		logger.Error("Unable to initialize Tracer", "error", err)
-		os.Exit(1)
-	}
-	defer closer.Close()
 
 	conf = &Config{}
 
@@ -57,7 +58,7 @@ func main() {
 	defer c.Close()
 
 	// configure the telemetry
-	t := telemetry.New(conf.MetricsAddress)
+	//t := telemetry.New(conf.MetricsAddress)
 
 	// load the db connection
 	db, err := retryDBUntilReady()
@@ -67,14 +68,15 @@ func main() {
 	}
 
 	r := mux.NewRouter()
-	r.Use(hckit.TracingMiddleware)
+	r.Use(otelmux.Middleware(telemetry.SERVICE_NAME))
 
 	authMiddleware := handlers.NewAuthMiddleware(db, logger)
 
-	healthHandler := handlers.NewHealth(t, logger, db)
+	healthHandler := handlers.NewHealth(logger, db)
 	r.Handle("/health", healthHandler).Methods("GET")
 
 	coffeeHandler := handlers.NewCoffee(db, logger)
+
 	r.Handle("/coffees", coffeeHandler).Methods("GET")
 	r.Handle("/coffees", authMiddleware.IsAuthorized(coffeeHandler.CreateCoffee)).Methods("POST")
 
@@ -95,6 +97,7 @@ func main() {
 	r.Handle("/orders/{id:[0-9]+}", authMiddleware.IsAuthorized(orderHandler.DeleteOrder)).Methods("DELETE")
 
 	logger.Info("Starting service", "bind", conf.BindAddress, "metrics", conf.MetricsAddress)
+	span.End()
 	err = http.ListenAndServe(conf.BindAddress, r)
 	if err != nil {
 		logger.Error("Unable to start server", "bind", conf.BindAddress, "error", err)

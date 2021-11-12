@@ -1,12 +1,13 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 
-	hckit "github.com/hashicorp-demoapp/go-hckit"
 	"github.com/hashicorp-demoapp/product-api-go/data/model"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // HTTP contains all client details
@@ -17,14 +18,18 @@ type HTTP struct {
 
 // NewHTTP creates a new HTTP client
 func NewHTTP(baseURL string) *HTTP {
-	c := &http.Client{Transport: hckit.TracingRoundTripper{Proxied: http.DefaultTransport}}
+	c := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 	return &HTTP{c, baseURL}
 }
 
 // GetCoffees retrieves a list of coffees
-func (h *HTTP) GetCoffees() ([]model.Coffee, error) {
+func (h *HTTP) GetCoffees(ctx context.Context) ([]model.Coffee, error) {
 	log.Print("INFO: Executing GetCoffees")
-	resp, err := h.client.Get(fmt.Sprintf("%s/coffees", h.baseURL))
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/coffees", h.baseURL), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -23,6 +23,7 @@ func NewIngredients(con data.Connection, l hclog.Logger) *Ingredients {
 }
 
 func (c *Ingredients) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Coffee Ingredients")
 
 	vars := mux.Vars(r)
@@ -33,7 +34,7 @@ func (c *Ingredients) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "Unable to list ingredients", http.StatusInternalServerError)
 	}
 
-	ingredients, err := c.con.GetIngredientsForCoffee(coffeeID)
+	ingredients, err := c.con.GetIngredientsForCoffee(ctx, coffeeID)
 	if err != nil {
 		c.log.Error("Unable to get ingredients from database", "error", err)
 		http.Error(rw, "Unable to list ingredients", http.StatusInternalServerError)
@@ -50,6 +51,7 @@ func (c *Ingredients) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 // CreateCoffeeIngredient creates a new coffee ingredient
 func (c *Ingredients) CreateCoffeeIngredient(_ int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Coffee | CreateCoffeeIngredient")
 
 	body := struct {
@@ -66,7 +68,7 @@ func (c *Ingredients) CreateCoffeeIngredient(_ int, rw http.ResponseWriter, r *h
 		return
 	}
 
-	coffeeIngredient, err := c.con.UpsertCoffeeIngredient(
+	coffeeIngredient, err := c.con.UpsertCoffeeIngredient(ctx,
 		model.Coffee{ID: body.CoffeeID},
 		model.Ingredient{
 			ID:       body.IngredientID,

@@ -30,9 +30,10 @@ func (c *Order) ServeHTTP(userID int, rw http.ResponseWriter, r *http.Request) {
 
 // GetUserOrders gets all user orders for a specific user
 func (c *Order) GetUserOrders(userID int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Orders | GetUserOrders")
 
-	orders, err := c.con.GetOrders(userID, nil)
+	orders, err := c.con.GetOrders(ctx, userID, nil)
 	if err != nil {
 		c.log.Error("Unable to get order from database", "error", err)
 		http.Error(rw, "Unable to list orders", http.StatusInternalServerError)
@@ -51,6 +52,7 @@ func (c *Order) GetUserOrders(userID int, rw http.ResponseWriter, r *http.Reques
 
 // CreateOrder creates a new order
 func (c *Order) CreateOrder(userID int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Orders | CreateOrder")
 
 	body := []model.OrderItems{}
@@ -62,7 +64,7 @@ func (c *Order) CreateOrder(userID int, rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	order, err := c.con.CreateOrder(userID, body)
+	order, err := c.con.CreateOrder(ctx, userID, body)
 	if err != nil {
 		c.log.Error("Unable to create new order", "error", err)
 		http.Error(rw, "Unable to create new order", http.StatusInternalServerError)
@@ -80,6 +82,7 @@ func (c *Order) CreateOrder(userID int, rw http.ResponseWriter, r *http.Request)
 
 // GetUserOrder gets a specific user order
 func (c *Order) GetUserOrder(userID int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Orders | GetUserOrder")
 
 	vars := mux.Vars(r)
@@ -91,7 +94,7 @@ func (c *Order) GetUserOrder(userID int, rw http.ResponseWriter, r *http.Request
 		return
 	}
 
-	orders, err := c.con.GetOrders(userID, &orderID)
+	orders, err := c.con.GetOrders(ctx, userID, &orderID)
 	if err != nil {
 		c.log.Error("Unable to get order from database", "error", err)
 		http.Error(rw, "Unable to list order", http.StatusInternalServerError)
@@ -116,6 +119,7 @@ func (c *Order) GetUserOrder(userID int, rw http.ResponseWriter, r *http.Request
 
 // UpdateOrder updates an order
 func (c *Order) UpdateOrder(userID int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Orders | UpdateOrder")
 
 	// Get orderID
@@ -136,7 +140,7 @@ func (c *Order) UpdateOrder(userID int, rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	order, err := c.con.UpdateOrder(userID, orderID, body)
+	order, err := c.con.UpdateOrder(ctx, userID, orderID, body)
 	if err != nil {
 		c.log.Error("Unable to create new order", "error", err)
 		http.Error(rw, "Unable to update order", http.StatusInternalServerError)
@@ -154,6 +158,7 @@ func (c *Order) UpdateOrder(userID int, rw http.ResponseWriter, r *http.Request)
 
 // DeleteOrder deletes a user order
 func (c *Order) DeleteOrder(userID int, rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle Orders | DeleteOrder")
 
 	vars := mux.Vars(r)
@@ -165,7 +170,7 @@ func (c *Order) DeleteOrder(userID int, rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = c.con.DeleteOrder(userID, orderID)
+	err = c.con.DeleteOrder(ctx, userID, orderID)
 	if err != nil {
 		c.log.Error("Unable to delete order from database", "error", err)
 		http.Error(rw, "Unable to delete order", http.StatusInternalServerError)

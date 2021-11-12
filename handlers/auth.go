@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/dgrijalva/jwt-go"
@@ -20,7 +21,7 @@ func NewAuthMiddleware(con data.Connection, l hclog.Logger) *AuthMiddleware {
 }
 
 // ExtractJWT retrieves the token and user ID from the JWT
-func ExtractJWT(authToken string) (int, int, error) {
+func ExtractJWT(ctx context.Context, authToken string) (int, int, error) {
 	token, err := jwt.Parse(authToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, nil
@@ -40,12 +41,12 @@ func ExtractJWT(authToken string) (int, int, error) {
 	return -1, -1, nil
 }
 
-func (c *AuthMiddleware) VerifyJWT(authToken string) (int, error) {
-	tokenID, userID, err := ExtractJWT(authToken)
+func (c *AuthMiddleware) VerifyJWT(ctx context.Context, authToken string) (int, error) {
+	tokenID, userID, err := ExtractJWT(ctx, authToken)
 	if err != nil {
 		return userID, err
 	}
-	if _, err := c.con.GetToken(tokenID, userID); err != nil {
+	if _, err := c.con.GetToken(ctx, tokenID, userID); err != nil {
 		return userID, err
 	}
 	return userID, nil
@@ -55,7 +56,8 @@ func (c *AuthMiddleware) VerifyJWT(authToken string) (int, error) {
 func (c *AuthMiddleware) IsAuthorized(next func(userID int, w http.ResponseWriter, r *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authToken := r.Header.Get("Authorization")
-		userID, err := c.VerifyJWT(authToken)
+		ctx := r.Context()
+		userID, err := c.VerifyJWT(ctx, authToken)
 		if err == nil {
 			next(userID, w, r)
 			return

@@ -19,7 +19,7 @@ build_db:
 		--push
 	docker buildx rm multi-db
 
-build_linux:
+build_linux: build_arm64
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/amd64/product-api
 
 build_arm64:

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -45,6 +46,7 @@ func (c *User) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 // SignUp registers a new user and returns a JWT token
 // only restriction is username must be unique
 func (c *User) SignUp(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle User | signup")
 
 	body := AuthStruct{}
@@ -56,7 +58,7 @@ func (c *User) SignUp(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := c.con.CreateUser(body.Username, body.Password)
+	u, err := c.con.CreateUser(ctx, body.Username, body.Password)
 	if err != nil {
 		c.log.Error("Unable to create new user", "error", err)
 		if err.Error() == "pq: duplicate key value violates unique constraint \"users_username_key\"" {
@@ -67,7 +69,7 @@ func (c *User) SignUp(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, err := c.generateJWTToken(u.ID, u.Username)
+	tokenString, err := c.generateJWTToken(ctx, u.ID, u.Username)
 	if err != nil {
 		c.log.Error("Unable to generate JWT token", "error", err)
 		http.Error(rw, "Unable to generate JWT token", http.StatusInternalServerError)
@@ -83,6 +85,7 @@ func (c *User) SignUp(rw http.ResponseWriter, r *http.Request) {
 
 // SignIn signs in a user and returns a JWT token
 func (c *User) SignIn(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	c.log.Info("Handle User | signin")
 
 	body := AuthStruct{}
@@ -94,14 +97,14 @@ func (c *User) SignIn(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := c.con.AuthUser(body.Username, body.Password)
+	u, err := c.con.AuthUser(ctx, body.Username, body.Password)
 	if err != nil {
 		c.log.Error("Unable to sign in user", "error", err)
 		http.Error(rw, "Invalid Credentials", http.StatusUnauthorized)
 		return
 	}
 
-	tokenString, err := c.generateJWTToken(u.ID, u.Username)
+	tokenString, err := c.generateJWTToken(ctx, u.ID, u.Username)
 	if err != nil {
 		c.log.Error("Unable to generate JWT token", "error", err)
 		http.Error(rw, "Unable to generate JWT token", http.StatusInternalServerError)
@@ -115,8 +118,8 @@ func (c *User) SignIn(rw http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (c *User) generateJWTToken(userID int, username string) (string, error) {
-	t, err := c.con.CreateToken(userID)
+func (c *User) generateJWTToken(ctx context.Context, userID int, username string) (string, error) {
+	t, err := c.con.CreateToken(ctx, userID)
 	if err != nil {
 		return "", err
 	}
@@ -130,12 +133,12 @@ func (c *User) generateJWTToken(userID int, username string) (string, error) {
 	return token.SignedString([]byte(jwtSecret))
 }
 
-func (c *User) invalidateJWTToken(authToken string) error {
-	tokenID, userID, err := ExtractJWT(authToken)
+func (c *User) invalidateJWTToken(ctx context.Context, authToken string) error {
+	tokenID, userID, err := ExtractJWT(ctx, authToken)
 	if err != nil {
 		return err
 	}
-	if err = c.con.DeleteToken(tokenID, userID); err != nil {
+	if err = c.con.DeleteToken(ctx, tokenID, userID); err != nil {
 		return err
 	}
 	return nil
@@ -144,10 +147,10 @@ func (c *User) invalidateJWTToken(authToken string) error {
 // SignOut signs out a user and invalidates a JWT token
 func (c *User) SignOut(rw http.ResponseWriter, r *http.Request) {
 	c.log.Info("Handle User | signout")
-
+	ctx := r.Context()
 	authToken := r.Header.Get("Authorization")
 
-	if err := c.invalidateJWTToken(authToken); err != nil {
+	if err := c.invalidateJWTToken(ctx, authToken); err != nil {
 		c.log.Error("Unable to sign out user", "error", err)
 		http.Error(rw, "Unable to sign out user", http.StatusInternalServerError)
 		return

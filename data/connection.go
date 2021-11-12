@@ -1,29 +1,34 @@
 package data
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp-demoapp/product-api-go/data/model"
+	"github.com/uptrace/opentelemetry-go-extra/otelsql"
+	"github.com/uptrace/opentelemetry-go-extra/otelsqlx"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+
 	//"database/sql"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
 
 type Connection interface {
-	IsConnected() (bool, error)
-	GetProducts() (model.Coffees, error)
-	GetIngredientsForCoffee(int) (model.Ingredients, error)
-	CreateUser(string, string) (model.User, error)
-	AuthUser(string, string) (model.User, error)
-	CreateToken(int) (model.Token, error)
-	GetToken(int, int) (model.Token, error)
-	DeleteToken(int, int) error
-	GetOrders(int, *int) (model.Orders, error)
-	CreateOrder(int, []model.OrderItems) (model.Order, error)
-	UpdateOrder(int, int, []model.OrderItems) (model.Order, error)
-	DeleteOrder(int, int) error
-	CreateCoffee(model.Coffee) (model.Coffee, error)
-	UpsertCoffeeIngredient(model.Coffee, model.Ingredient) (model.CoffeeIngredient, error)
+	IsConnected(context.Context) (bool, error)
+	GetProducts(context.Context) (model.Coffees, error)
+	GetIngredientsForCoffee(context.Context, int) (model.Ingredients, error)
+	CreateUser(context.Context, string, string) (model.User, error)
+	AuthUser(context.Context, string, string) (model.User, error)
+	CreateToken(context.Context, int) (model.Token, error)
+	GetToken(context.Context, int, int) (model.Token, error)
+	DeleteToken(context.Context, int, int) error
+	GetOrders(context.Context, int, *int) (model.Orders, error)
+	CreateOrder(context.Context, int, []model.OrderItems) (model.Order, error)
+	UpdateOrder(context.Context, int, int, []model.OrderItems) (model.Order, error)
+	DeleteOrder(context.Context, int, int) error
+	CreateCoffee(context.Context, model.Coffee) (model.Coffee, error)
+	UpsertCoffeeIngredient(context.Context, model.Coffee, model.Ingredient) (model.CoffeeIngredient, error)
 }
 
 type PostgresSQL struct {
@@ -31,8 +36,9 @@ type PostgresSQL struct {
 }
 
 // New creates a new connection to the database
-func New(connection string) (Connection, error) {
-	db, err := sqlx.Connect("postgres", connection)
+func New(ctx context.Context, connection string) (Connection, error) {
+	db, err := otelsqlx.ConnectContext(ctx, "postgres", connection,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL))
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +47,8 @@ func New(connection string) (Connection, error) {
 }
 
 // IsConnected checks the connection to the database and returns an error if not connected
-func (c *PostgresSQL) IsConnected() (bool, error) {
-	err := c.db.Ping()
+func (c *PostgresSQL) IsConnected(ctx context.Context) (bool, error) {
+	err := c.db.PingContext(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -51,10 +57,10 @@ func (c *PostgresSQL) IsConnected() (bool, error) {
 }
 
 // GetProducts returns all products from the database
-func (c *PostgresSQL) GetProducts() (model.Coffees, error) {
+func (c *PostgresSQL) GetProducts(ctx context.Context) (model.Coffees, error) {
 	cos := model.Coffees{}
 
-	err := c.db.Select(&cos, "SELECT * FROM coffees")
+	err := c.db.SelectContext(ctx, &cos, "SELECT * FROM coffees")
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +68,7 @@ func (c *PostgresSQL) GetProducts() (model.Coffees, error) {
 	// fetch the ingredients for each coffee
 	for n, cof := range cos {
 		i := []model.CoffeeIngredient{}
-		err := c.db.Select(&i, "SELECT ingredient_id FROM coffee_ingredients WHERE coffee_id=$1 AND quantity > 0", cof.ID)
+		err := c.db.SelectContext(ctx, &i, "SELECT ingredient_id FROM coffee_ingredients WHERE coffee_id=$1 AND quantity > 0", cof.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -74,10 +80,10 @@ func (c *PostgresSQL) GetProducts() (model.Coffees, error) {
 }
 
 // GetIngredientsForCoffee get the ingredients for the given coffeeid
-func (c *PostgresSQL) GetIngredientsForCoffee(coffeeid int) (model.Ingredients, error) {
+func (c *PostgresSQL) GetIngredientsForCoffee(ctx context.Context, coffeeid int) (model.Ingredients, error) {
 	is := []model.Ingredient{}
 
-	err := c.db.Select(&is,
+	err := c.db.SelectContext(ctx, &is,
 		`SELECT ingredients.id, ingredients.name, coffee_ingredients.quantity, coffee_ingredients.unit FROM ingredients 
 		 LEFT JOIN coffee_ingredients ON ingredients.id=coffee_ingredients.ingredient_id 
 		 WHERE coffee_ingredients.coffee_id=$1 AND coffee_ingredients.deleted_at IS NULL`,
@@ -91,7 +97,7 @@ func (c *PostgresSQL) GetIngredientsForCoffee(coffeeid int) (model.Ingredients, 
 }
 
 // CreateUser creates a new user
-func (c *PostgresSQL) CreateUser(username string, password string) (model.User, error) {
+func (c *PostgresSQL) CreateUser(ctx context.Context, username string, password string) (model.User, error) {
 	u := model.User{}
 
 	rows, err := c.db.NamedQuery(
@@ -117,10 +123,10 @@ func (c *PostgresSQL) CreateUser(username string, password string) (model.User, 
 }
 
 // AuthUser checks whether username and password matches
-func (c *PostgresSQL) AuthUser(username string, password string) (model.User, error) {
+func (c *PostgresSQL) AuthUser(ctx context.Context, username string, password string) (model.User, error) {
 	us := []model.User{}
 
-	err := c.db.Select(&us,
+	err := c.db.SelectContext(ctx, &us,
 		`SELECT id, username FROM users 
 		WHERE username = $1 AND password = crypt($2, password);`,
 		username, password,
@@ -133,7 +139,7 @@ func (c *PostgresSQL) AuthUser(username string, password string) (model.User, er
 }
 
 // CreateToken creates a new token
-func (c *PostgresSQL) CreateToken(userID int) (model.Token, error) {
+func (c *PostgresSQL) CreateToken(ctx context.Context, userID int) (model.Token, error) {
 	token := model.Token{}
 
 	rows, err := c.db.NamedQuery(
@@ -158,10 +164,10 @@ func (c *PostgresSQL) CreateToken(userID int) (model.Token, error) {
 }
 
 // GetToken checks whether token exists
-func (c *PostgresSQL) GetToken(tokenID int, userID int) (model.Token, error) {
+func (c *PostgresSQL) GetToken(ctx context.Context, tokenID int, userID int) (model.Token, error) {
 	token := []model.Token{}
 
-	err := c.db.Select(&token,
+	err := c.db.SelectContext(ctx, &token,
 		`SELECT id, user_id FROM tokens 
 		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL;`,
 		tokenID, userID,
@@ -178,10 +184,10 @@ func (c *PostgresSQL) GetToken(tokenID int, userID int) (model.Token, error) {
 }
 
 // DeleteToken deletes an existing token in the database
-func (c *PostgresSQL) DeleteToken(tokenID int, userID int) error {
+func (c *PostgresSQL) DeleteToken(ctx context.Context, tokenID int, userID int) error {
 	tx := c.db.MustBegin()
 
-	_, err := tx.NamedExec(
+	_, err := tx.NamedExecContext(ctx,
 		`UPDATE tokens SET deleted_at = now()
 		WHERE id = :token_id AND user_id = :user_id AND deleted_at IS NULL`, map[string]interface{}{
 			"token_id": tokenID,
@@ -201,18 +207,18 @@ func (c *PostgresSQL) DeleteToken(tokenID int, userID int) error {
 }
 
 // GetOrders returns orders from the database
-func (c *PostgresSQL) GetOrders(userID int, orderID *int) (model.Orders, error) {
+func (c *PostgresSQL) GetOrders(ctx context.Context, userID int, orderID *int) (model.Orders, error) {
 	orders := model.Orders{}
 
 	if orderID != nil {
-		err := c.db.Select(&orders,
+		err := c.db.SelectContext(ctx, &orders,
 			`SELECT * FROM orders WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL`,
 			userID, orderID)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		err := c.db.Select(&orders,
+		err := c.db.SelectContext(ctx, &orders,
 			`SELECT * FROM orders WHERE user_id = $1 AND deleted_at IS NULL`,
 			userID)
 		if err != nil {
@@ -223,7 +229,7 @@ func (c *PostgresSQL) GetOrders(userID int, orderID *int) (model.Orders, error) 
 	// fetch the coffee for each order
 	for n, order := range orders {
 		items := []model.OrderItems{}
-		err := c.db.Select(&items,
+		err := c.db.SelectContext(ctx, &items,
 			`SELECT * FROM order_items WHERE order_id=$1 AND deleted_at IS NULL`, order.ID)
 		if err != nil {
 			return nil, err
@@ -232,7 +238,7 @@ func (c *PostgresSQL) GetOrders(userID int, orderID *int) (model.Orders, error) 
 
 		for i, item := range items {
 			coffee := model.Coffees{}
-			err := c.db.Select(&coffee,
+			err := c.db.SelectContext(ctx, &coffee,
 				`SELECT * FROM coffees WHERE id=$1 AND deleted_at IS NULL`, item.CoffeeID)
 			if err != nil {
 				return nil, err
@@ -242,7 +248,7 @@ func (c *PostgresSQL) GetOrders(userID int, orderID *int) (model.Orders, error) 
 				orders[n].Items[i].Coffee = coffee[0]
 
 				ing := []model.CoffeeIngredient{}
-				err := c.db.Select(&ing, "SELECT ingredient_id FROM coffee_ingredients WHERE coffee_id=$1 AND quantity > 0", orders[n].Items[i].Coffee.ID)
+				err := c.db.SelectContext(ctx, &ing, "SELECT ingredient_id FROM coffee_ingredients WHERE coffee_id=$1 AND quantity > 0", orders[n].Items[i].Coffee.ID)
 				if err != nil {
 					return nil, err
 				}
@@ -256,7 +262,7 @@ func (c *PostgresSQL) GetOrders(userID int, orderID *int) (model.Orders, error) 
 }
 
 // CreateOrder creates a new order in the database
-func (c *PostgresSQL) CreateOrder(userID int, orderItems []model.OrderItems) (model.Order, error) {
+func (c *PostgresSQL) CreateOrder(ctx context.Context, userID int, orderItems []model.OrderItems) (model.Order, error) {
 	tx := c.db.MustBegin()
 
 	o := model.Order{}
@@ -279,7 +285,7 @@ func (c *PostgresSQL) CreateOrder(userID int, orderItems []model.OrderItems) (mo
 	rows.Close()
 
 	for _, item := range orderItems {
-		_, err = tx.NamedExec(
+		_, err = tx.NamedExecContext(ctx,
 			`INSERT INTO order_items (order_id, coffee_id, quantity, created_at, updated_at) 
 			VALUES (:order_id, :coffee_id, :quantity, now(), now())`, map[string]interface{}{
 				"order_id":  o.ID,
@@ -297,7 +303,7 @@ func (c *PostgresSQL) CreateOrder(userID int, orderItems []model.OrderItems) (mo
 		return o, err
 	}
 
-	orders, err := c.GetOrders(userID, &o.ID)
+	orders, err := c.GetOrders(ctx, userID, &o.ID)
 	if err != nil {
 		return o, err
 	}
@@ -310,7 +316,7 @@ func (c *PostgresSQL) CreateOrder(userID int, orderItems []model.OrderItems) (mo
 }
 
 // UpdateOrder updates an existing order in the database
-func (c *PostgresSQL) UpdateOrder(userID int, orderID int, orderItems []model.OrderItems) (model.Order, error) {
+func (c *PostgresSQL) UpdateOrder(ctx context.Context, userID int, orderID int, orderItems []model.OrderItems) (model.Order, error) {
 	tx := c.db.MustBegin()
 
 	o := model.Order{}
@@ -334,7 +340,7 @@ func (c *PostgresSQL) UpdateOrder(userID int, orderID int, orderItems []model.Or
 	rows.Close()
 
 	// remove existing items from order
-	_, err = tx.NamedExec(
+	_, err = tx.NamedExecContext(ctx,
 		`UPDATE order_items SET deleted_at = now()
 		WHERE order_id = :order_id AND deleted_at IS NULL`, map[string]interface{}{
 			"order_id": orderID,
@@ -345,7 +351,7 @@ func (c *PostgresSQL) UpdateOrder(userID int, orderID int, orderItems []model.Or
 	}
 
 	for _, item := range orderItems {
-		_, err = tx.NamedExec(
+		_, err = tx.NamedExecContext(ctx,
 			`INSERT INTO order_items (order_id, coffee_id, quantity, created_at, updated_at) 
 			VALUES (:order_id, :coffee_id, :quantity, now(), now())`, map[string]interface{}{
 				"order_id":  o.ID,
@@ -363,7 +369,7 @@ func (c *PostgresSQL) UpdateOrder(userID int, orderID int, orderItems []model.Or
 		return o, err
 	}
 
-	orders, err := c.GetOrders(userID, &orderID)
+	orders, err := c.GetOrders(ctx, userID, &orderID)
 	if err != nil {
 		return o, err
 	}
@@ -376,11 +382,11 @@ func (c *PostgresSQL) UpdateOrder(userID int, orderID int, orderItems []model.Or
 }
 
 // DeleteOrder deletes an existing order in the database
-func (c *PostgresSQL) DeleteOrder(userID int, orderID int) error {
+func (c *PostgresSQL) DeleteOrder(ctx context.Context, userID int, orderID int) error {
 	tx := c.db.MustBegin()
 
 	// remove existing items from order
-	_, err := tx.NamedExec(
+	_, err := tx.NamedExecContext(ctx,
 		`UPDATE order_items SET deleted_at = now()
 		WHERE order_id = :order_id AND deleted_at IS NULL`, map[string]interface{}{
 			"order_id": orderID,
@@ -390,7 +396,7 @@ func (c *PostgresSQL) DeleteOrder(userID int, orderID int) error {
 		return err
 	}
 
-	_, err = tx.NamedExec(
+	_, err = tx.NamedExecContext(ctx,
 		`UPDATE orders SET deleted_at = now()
 		WHERE user_id = :user_id AND id = :order_id AND deleted_at IS NULL`, map[string]interface{}{
 			"user_id":  userID,
@@ -410,7 +416,7 @@ func (c *PostgresSQL) DeleteOrder(userID int, orderID int) error {
 }
 
 // CreateCoffee creates a new coffee
-func (c *PostgresSQL) CreateCoffee(coffee model.Coffee) (model.Coffee, error) {
+func (c *PostgresSQL) CreateCoffee(ctx context.Context, coffee model.Coffee) (model.Coffee, error) {
 	m := model.Coffee{}
 
 	rows, err := c.db.NamedQuery(
@@ -439,7 +445,7 @@ func (c *PostgresSQL) CreateCoffee(coffee model.Coffee) (model.Coffee, error) {
 }
 
 // UpsertCoffeeIngredient upserts a new coffee ingredient
-func (c *PostgresSQL) UpsertCoffeeIngredient(coffee model.Coffee, ingredient model.Ingredient) (model.CoffeeIngredient, error) {
+func (c *PostgresSQL) UpsertCoffeeIngredient(ctx context.Context, coffee model.Coffee, ingredient model.Ingredient) (model.CoffeeIngredient, error) {
 	i := model.CoffeeIngredient{}
 
 	rows, err := c.db.NamedQuery(

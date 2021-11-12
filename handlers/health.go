@@ -27,8 +27,9 @@ func NewHealth(l hclog.Logger, db data.Connection) *Health {
 func (h *Health) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	//done := h.telemetry.NewTiming("health.call")
 	//defer done()
+	ctx := r.Context()
 
-	_, err := h.db.IsConnected()
+	_, err := h.db.IsConnected(ctx)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(rw, "error %s", err)

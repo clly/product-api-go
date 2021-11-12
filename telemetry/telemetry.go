@@ -6,6 +6,8 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"go.opentelemetry.io/otel"
+
+	//"go.opentelemetry.io/otel/exporter/metric/stdout"
 	otlpgrpc "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -101,6 +103,7 @@ func InitTracer() (context.Context, func(), error) {
 	// SSP sends all completed spans to the exporter immediately and that is
 	// exactly what we want/need in this app
 	// https://github.com/open-telemetry/opentelemetry-go/blob/main/sdk/trace/simple_span_processor.go
+	//exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
 	ssp := sdktrace.NewBatchSpanProcessor(exporter)
 
 	// ParentBased/AlwaysSample Sampler is the default and that's fine for this

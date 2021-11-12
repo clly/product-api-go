@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
@@ -32,7 +33,13 @@ var configFile = env.String("CONFIG_FILE", false, "./conf.json", "Path to JSON e
 const jwtSecret = "test"
 
 func main() {
-	logger = hclog.Default()
+	logger = hclog.New(
+		&hclog.LoggerOptions{
+			Name:       telemetry.SERVICE_NAME,
+			JSONFormat: true,
+		},
+	)
+	hclog.SetDefault(logger)
 
 	ctx, closer, err := telemetry.InitTracer()
 	if err != nil {
@@ -61,7 +68,7 @@ func main() {
 	//t := telemetry.New(conf.MetricsAddress)
 
 	// load the db connection
-	db, err := retryDBUntilReady()
+	db, err := retryDBUntilReady(ctx)
 	if err != nil {
 		logger.Error("Timeout waiting for database connection")
 		os.Exit(1)
@@ -107,13 +114,13 @@ func main() {
 // retryDBUntilReady keeps retrying the database connection
 // when running the application on a scheduler it is possible that the app will come up before
 // the database, this can cause the app to go into a CrashLoopBackoff cycle
-func retryDBUntilReady() (data.Connection, error) {
+func retryDBUntilReady(ctx context.Context) (data.Connection, error) {
 	st := time.Now()
 	dt := 1 * time.Second  // this should be an exponential backoff
 	mt := 60 * time.Second // max time to wait of the DB connection
 
 	for {
-		db, err := data.New(conf.DBConnection)
+		db, err := data.New(ctx, conf.DBConnection)
 		if err == nil {
 			return db, nil
 		}

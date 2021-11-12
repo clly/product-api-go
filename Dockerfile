@@ -8,16 +8,16 @@ RUN mkdir /app
 # Copy AMD binaries
 FROM base AS image-amd64
 
-COPY amd64/product-api /app/product-api
+COPY bin/amd64/product-api /app/product-api
 RUN chmod +x /app/product-api
 
 # Copy ARM binaries
 FROM base AS image-arm64
 
-COPY arm64/product-api /app/product-api
+COPY bin/arm64/product-api /app/product-api
 RUN chmod +x /app/product-api
 
-FROM image-${TARGETARCH}
+FROM image-amd64
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

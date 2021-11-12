@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/hashicorp-demoapp/product-api-go/data"
 	"github.com/hashicorp-demoapp/product-api-go/data/model"
 	"github.com/hashicorp/go-hclog"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Coffee -
@@ -22,9 +24,12 @@ func NewCoffee(con data.Connection, l hclog.Logger) *Coffee {
 }
 
 func (c *Coffee) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	c.log.Info("Handle Coffee")
-
-	prods, err := c.con.GetProducts()
+	t0 := time.Now()
+	log := c.log.With("http.scheme", r.URL.Scheme, "http.url", r.URL.String(), "http.host", r.Host, "http.user_agent", r.Header.Get("User-Agent"))
+	log.Info("Handle Coffee")
+	ctx := r.Context()
+	spanCtx := trace.SpanContextFromContext(ctx)
+	prods, err := c.con.GetProducts(ctx)
 	if err != nil {
 		c.log.Error("Unable to get products from database", "error", err)
 		http.Error(rw, "Unable to list products", http.StatusInternalServerError)
@@ -37,11 +42,14 @@ func (c *Coffee) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.Write(d)
+	t1 := time.Since(t0)
+	log.With("span.id", spanCtx.SpanID(), "trace.id", spanCtx.TraceID()).Info("Handle Coffee Finish", "duration_ms", t1.Milliseconds())
 }
 
 // CreateCoffee creates a new coffee
 func (c *Coffee) CreateCoffee(_ int, rw http.ResponseWriter, r *http.Request) {
 	c.log.Info("Handle Coffee | CreateCoffee")
+	ctx := r.Context()
 
 	body := model.Coffee{}
 
@@ -52,7 +60,7 @@ func (c *Coffee) CreateCoffee(_ int, rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coffee, err := c.con.CreateCoffee(body)
+	coffee, err := c.con.CreateCoffee(ctx, body)
 	if err != nil {
 		c.log.Error("Unable to create new coffee", "error", err)
 		http.Error(rw, fmt.Sprintf("Unable to create new coffee: %s", err.Error()), http.StatusInternalServerError)
